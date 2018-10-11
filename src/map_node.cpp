@@ -15,7 +15,6 @@ class MapNode
 public:
     ros::NodeHandle n;
     ros::Publisher pub_wall;
-    //std::string initial_map;
 
 
 
@@ -23,28 +22,34 @@ public:
 
         n = node;
 
-        map_resolution = res; //Every element corresponds to a 2x2 cm area
-        cols = (int) round(width/map_resolution)+4;
-        rows = (int) round(height/map_resolution)+4;
-        ROS_INFO("Grid map rows: %i, cols: %i",rows,cols);
+        map_resolution = res; //Every element corresponds to a res*res cm area
+        nColumns = (int) round((width/map_resolution)+0.5);
+        nRows = (int) round((height/map_resolution)+0.5);
+        nRows = fmax(nRows, nColumns);
+        nColumns = fmax(nRows,nColumns);
+        ROS_INFO("Grid map rows: %i, cols: %i",nRows,nColumns);
 
 
         std::vector<int8_t> initialmap;
-        initialmap.resize((rows)*(cols));
+        initialmap.resize((nRows)*(nColumns));
 
         map_msg.data = initialmap;
         map_msg.header.frame_id = "/map";
         map_msg.info.resolution = map_resolution;
-        map_msg.info.height = rows;
-        map_msg.info.width = cols;
-        map_msg.info.origin.position.y = height;
-        map_msg.info.origin.orientation.x = 180;
+        map_msg.info.height = nRows; //nRows;
+        map_msg.info.width = nColumns; //nColumns;
+        ROS_INFO("Map size %i",map_msg.data.size());
+
+        // grid msg has different default origin compared to given map
+        map_msg.info.origin.orientation.y = 1;
+        map_msg.info.origin.orientation.x = 1;
 
         pub_wall = n.advertise<nav_msgs::OccupancyGrid>("/grid_array",1);
     }
 
     void wallCallback(const nav_msgs::OccupancyGrid::ConstPtr& msg)
     {
+        // TODO
         float a = 0;
     }
 
@@ -53,76 +58,129 @@ public:
         return k*x+m;
     }
 
-    void addWall(double x1, double y1, double x2, double y2)
-    {
-        double k, m, X, Xmax, Y, Ymax, temp;
-        int x_, y_;
-        int occupancy_value = 100;
 
-        if (sqrt(pow(x1,2) + pow(y1,2)) > sqrt(pow(x2,2) + pow(y2,2)))
+    int mToCell(double x)
+    {
+        return (int) round(x/map_resolution);
+    }
+
+
+    void addLineLow(double x0_d, double y0_d, double x1_d, double y1_d)
+    {
+        // Implements Bresenhams line algorithm for integers
+        int x0,x1,y0,y1,dx,dy,D,y,yi;
+        x0 = mToCell(x0_d);
+        x1 = mToCell(x1_d);
+        y0 = mToCell(y0_d);
+        y1 = mToCell(y1_d);
+
+        dx = x1-x0;
+        dy = y1-y0;
+        yi = 1;
+
+        if (dy <0)
         {
-            temp = x1;
-            x1 = x2;
-            x2 = temp;
-            temp = y1;
-            y1 = y2;
-            y2 = temp;
+            yi = -1;
+            dy = -dy;
         }
 
+        D = 2*dy-dx;
+        y = y0;
 
-        if (x2-x1 < y2-y1){
-            Y = fmin(y1,y2);
-            Ymax = fmax(y1,y2);
-            k = (x2-x1)/(y2-y1);
-            m = x1-k*y1;
-
-            ROS_INFO("Adding Wall as function of Y...");
-            while(Y < Ymax)
-            {
-                x_ = (int) round(getXofY(Y,k,m)/map_resolution);
-                y_ = (int) round(Y/map_resolution);
-                ROS_INFO("Adding: %i, %i. X = %f",x_,y_,Y);
-                addOccupancy(x_, y_,occupancy_value);
-                Y = Y+map_resolution/2;
-            }
-            ROS_INFO("Wall added.");
-
-
-        }else
+        ROS_INFO("Adding Line Low");
+        for (int x = x0; x<=x1; x++)
         {
-            k = (y2-y1)/(x2-x1);
-            m = y1-k*x1;
-            X = fmin(x1,x2);
-            Xmax = fmax(x1,x2);
+            addOccupancy(x,y,100);
+            ROS_INFO("Adding: %i , %i",x,y);
 
-            ROS_INFO("Adding Wall as function of X...");
-            while(X < Xmax)
+
+            if (D > 0)
             {
-                x_ = (int) round(X/map_resolution);
-                y_ = (int) round(getXofY(X,k,m)/map_resolution);
-                ROS_INFO("Adding: %i, %i. X = %f",x_,y_,X);
-                addOccupancy(x_, y_, occupancy_value);
-                X = X+map_resolution/2;
+                y = y+yi;
+                D = D-2*dx;
             }
-            ROS_INFO("Wall added.");
+            D = D+2*dy;
+        }
+    }
+
+    void addLineHigh(double x0_d, double y0_d, double x1_d, double y1_d)
+    {
+        // Implements Bresenhams line algorithm for integers
+        int x0,x1,y0,y1,dx,dy,D,x,xi;
+        x0 = mToCell(x0_d);
+        x1 = mToCell(x1_d);
+        y0 = mToCell(y0_d);
+        y1 = mToCell(y1_d);
+
+        dx = x1-x0;
+        dy = y1-y0;
+        xi = 1;
+
+        if (dx < 0)
+        {
+            xi = -1;
+            dx = -dx;
+        }
+
+        D = 2*dx-dy;
+        x = x0;
+
+        ROS_INFO("Adding Line High");
+        for (int y = y0; y<=y1; y++)
+        {
+            addOccupancy(x,y,100);
+            ROS_INFO("Adding: %i , %i",x,y);
+
+
+            if (D > 0)
+            {
+                x = x+xi;
+                D = D-2*dy;
+            }
+            D = D+2*dx;
         }
 
     }
 
 
+    void addLine(double x0, double y0, double x1, double y1)
+    {
+        ROS_INFO("Checking how to add line x0,y0,x1,y1 %f %f %f %f",x0,y0,x1,y1);
+        if (fabs(y1-y0) < fabs(x1-x0))
+        {
+            if (x0 > x1)
+            {
+                addLineLow(x1,y1,x0,y0);
+            }else
+            {
+                addLineLow(x0,y0,x1,y1);
+            }
+        }else
+        {
+            if (y0 > y1)
+            {
+                addLineHigh(x1,y1,x0,y0);
+            }else
+            {
+                addLineHigh(x0,y0,x1,y1);
+            }
+        }
+    }
+
+
     void addOccupancy(int x, int y, int value)
     {
-        int index = x*cols+y;
-        if (value < 0 || value < 100)
+        int index = x*nColumns+y;
+        if ((value < 0) || (value > 100))
         {
             ROS_INFO("Map recieved invalid occupancy value [%i]. Value must be in [0,100]", value);
         }
-        else if (index <= rows*cols)
+        else if (index <= nRows*nColumns)
         {
             map_msg.data[index] = value;
         }else
         {
-            ROS_INFO("Map index out of bounds: %i, Max: %i", index, rows*cols-1);
+            ROS_INFO("Map index out of bounds: %i, Max: %i", index, nRows*nColumns-1);
         }
     }
 
@@ -136,8 +194,8 @@ public:
 
 private:
     nav_msgs::OccupancyGrid map_msg;
-    int rows;
-    int cols;
+    int nRows;
+    int nColumns;
     double map_resolution;
 };
 
@@ -193,7 +251,7 @@ int main(int argc, char **argv)
 
     for (int i = 0; i < x1_points.size(); ++i)
     {
-        map_node.addWall(x1_points[i],y1_points[i],x2_points[i],y2_points[i]);
+        map_node.addLine(x1_points[i],y1_points[i],x2_points[i],y2_points[i]);
     }
 
 
