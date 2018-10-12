@@ -13,6 +13,7 @@ find_package(
   roscpp
   ras_maze_map
   visualization_msgs
+  geometry_msgs
 )
 
 
@@ -50,7 +51,7 @@ catkin_package(
   DEPENDS
 #  INCLUDE_DIRS include
 #  LIBRARIES robot_map
-  CATKIN_DEPENDS nav_msgs roscpp ras_maze_map visualization_msgs
+  CATKIN_DEPENDS nav_msgs roscpp ras_maze_map visualization_msgs geometry_msgs
 #  DEPENDS system_lib
 )
 

@@ -1,7 +1,7 @@
 
 #include <ros/ros.h>
 #include <nav_msgs/OccupancyGrid.h>
-#include <nav_msgs/MapMetaData.h>
+#include <geometry_msgs/Pose.h>
 #include <math.h>
 #include <sstream>
 #include <string>
@@ -14,7 +14,8 @@ class MapNode
 
 public:
     ros::NodeHandle n;
-    ros::Publisher pub_wall;
+    ros::Publisher pub_gridmap;
+    ros::Subscriber sub_objectsToAdd;
 
 
 
@@ -23,6 +24,7 @@ public:
         n = node;
 
         map_resolution = res; //Every element corresponds to a res*res cm area
+        object_size = 0.1; // side length of square object
         nColumns = (int) round((height/map_resolution)+0.5);
         nRows = (int) round((width/map_resolution)+0.5);
         ROS_INFO("Grid map rows: %i, cols: %i",nRows,nColumns);
@@ -40,13 +42,30 @@ public:
         map_msg.info.origin.orientation.y = 1;
         map_msg.info.origin.orientation.x = 1;
 
-        pub_wall = n.advertise<nav_msgs::OccupancyGrid>("/grid_array",1);
+        pub_gridmap = n.advertise<nav_msgs::OccupancyGrid>("/grid_map",1);
+        sub_objectsToAdd = n.subscribe<geometry_msgs::Pose>("/add_object",1,&MapNode::objectCallback,this);
     }
 
-    void wallCallback(const nav_msgs::OccupancyGrid::ConstPtr& msg)
+    void objectCallback(const geometry_msgs::Pose::ConstPtr& msg)
     {
-        // TODO
-        float a = 0;
+        int x,y;
+        x = mToCell(msg->position.x);
+        y = mToCell(msg->position.y);
+        addObject(x,y);
+
+    }
+
+    void addObject(int x, int y)
+    {
+        int size = mToCell(object_size);
+
+        for (int index_x = x-round(size/2); index_x <= x+round(size/2); index_x++)
+        {
+            for (int index_y = y-round(size/2); index_y<= y+round(size/2); index_y++)
+            {
+                addOccupancy(index_x,index_y,100);
+            }
+        }
     }
 
     double getXofY(double x, double k,double m)
@@ -179,7 +198,7 @@ public:
 
     void publishMapToTopic()
     {
-        pub_wall.publish(map_msg);
+        pub_gridmap.publish(map_msg);
     }
 
 
@@ -188,6 +207,7 @@ private:
     int nRows;
     int nColumns;
     double map_resolution;
+    double object_size;
 };
 
 
@@ -237,7 +257,7 @@ int main(int argc, char **argv)
     }
     ROS_INFO("Map dimensions: (%f x %f)",max_x,max_y);
 
-    double map_resolution = 0.02;
+    double map_resolution = 0.01;
     MapNode map_node = MapNode(n,max_x,max_y, map_resolution);
 
     for (int i = 0; i < x1_points.size(); ++i)
