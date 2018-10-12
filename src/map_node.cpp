@@ -18,17 +18,14 @@ public:
 
 
 
-    MapNode(ros::NodeHandle node, double width,double height, double res){
-
+    MapNode(ros::NodeHandle node, double height,double width, double res)
+    {
         n = node;
 
         map_resolution = res; //Every element corresponds to a res*res cm area
-        nColumns = (int) round((width/map_resolution)+0.5);
-        nRows = (int) round((height/map_resolution)+0.5);
-        nRows = fmax(nRows, nColumns);
-        nColumns = fmax(nRows,nColumns);
+        nColumns = (int) round((height/map_resolution)+0.5);
+        nRows = (int) round((width/map_resolution)+0.5);
         ROS_INFO("Grid map rows: %i, cols: %i",nRows,nColumns);
-
 
         std::vector<int8_t> initialmap;
         initialmap.resize((nRows)*(nColumns));
@@ -36,9 +33,8 @@ public:
         map_msg.data = initialmap;
         map_msg.header.frame_id = "/map";
         map_msg.info.resolution = map_resolution;
-        map_msg.info.height = nRows; //nRows;
-        map_msg.info.width = nColumns; //nColumns;
-        ROS_INFO("Map size %i",map_msg.data.size());
+        map_msg.info.height = nColumns; //nRows;
+        map_msg.info.width = nRows; //nColumns;
 
         // grid msg has different default origin compared to given map
         map_msg.info.origin.orientation.y = 1;
@@ -61,6 +57,7 @@ public:
 
     int mToCell(double x)
     {
+        // converts x from meters to grid cell coordinate
         return (int) round(x/map_resolution);
     }
 
@@ -87,12 +84,9 @@ public:
         D = 2*dy-dx;
         y = y0;
 
-        ROS_INFO("Adding Line Low");
         for (int x = x0; x<=x1; x++)
         {
             addOccupancy(x,y,100);
-            ROS_INFO("Adding: %i , %i",x,y);
-
 
             if (D > 0)
             {
@@ -125,12 +119,9 @@ public:
         D = 2*dx-dy;
         x = x0;
 
-        ROS_INFO("Adding Line High");
         for (int y = y0; y<=y1; y++)
         {
             addOccupancy(x,y,100);
-            ROS_INFO("Adding: %i , %i",x,y);
-
 
             if (D > 0)
             {
@@ -145,7 +136,7 @@ public:
 
     void addLine(double x0, double y0, double x1, double y1)
     {
-        ROS_INFO("Checking how to add line x0,y0,x1,y1 %f %f %f %f",x0,y0,x1,y1);
+        // Decides how to add line depending on derivative and starting point x0,y0
         if (fabs(y1-y0) < fabs(x1-x0))
         {
             if (x0 > x1)
@@ -170,7 +161,7 @@ public:
 
     void addOccupancy(int x, int y, int value)
     {
-        int index = x*nColumns+y;
+        int index = x*nRows+y;
         if ((value < 0) || (value > 100))
         {
             ROS_INFO("Map recieved invalid occupancy value [%i]. Value must be in [0,100]", value);
