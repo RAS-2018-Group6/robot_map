@@ -1,7 +1,7 @@
 
 #include <ros/ros.h>
 #include <nav_msgs/OccupancyGrid.h>
-#include <geometry_msgs/Pose.h>
+#include <geometry_msgs/PointStamped.h>
 #include <math.h>
 #include <sstream>
 #include <string>
@@ -24,7 +24,7 @@ public:
         n = node;
 
         map_resolution = res; //Every element corresponds to a res*res cm area
-        object_size = 0.1; // side length of square object
+        object_size = 0.05; // side length of square object
         nColumns = (int) round((height/map_resolution)+0.5);
         nRows = (int) round((width/map_resolution)+0.5);
         ROS_INFO("Grid map rows: %i, cols: %i",nRows,nColumns);
@@ -43,14 +43,15 @@ public:
         map_msg.info.origin.orientation.x = 1;
 
         pub_gridmap = n.advertise<nav_msgs::OccupancyGrid>("/grid_map",1);
-        sub_objectsToAdd = n.subscribe<geometry_msgs::Pose>("/add_object",1,&MapNode::objectCallback,this);
+        sub_objectsToAdd = n.subscribe<geometry_msgs::PointStamped>("/found_object",1,&MapNode::objectCallback,this);
     }
 
-    void objectCallback(const geometry_msgs::Pose::ConstPtr& msg)
+    void objectCallback(const geometry_msgs::PointStamped::ConstPtr& msg)
     {
         int x,y;
-        x = mToCell(msg->position.x);
-        y = mToCell(msg->position.y);
+        x = mToCell(msg->point.x);
+        y = mToCell(msg->point.y);
+        ROS_INFO("Placed Object at (%i,%i)",x,y);
         addObject(x,y);
 
     }
@@ -58,10 +59,21 @@ public:
     void addObject(int x, int y)
     {
         int size = mToCell(object_size);
+        int x_start = x-round(size/2);
+        int y_start = y-round(size/2);
 
-        for (int index_x = x-round(size/2); index_x <= x+round(size/2); index_x++)
+        if (x_start < 0)
         {
-            for (int index_y = y-round(size/2); index_y<= y+round(size/2); index_y++)
+          x_start = 0;
+        }
+        if (y_start < 0)
+        {
+          y_start = 0;
+        }
+
+        for (int index_x = x_start; index_x <= x+round(size/2); index_x++)
+        {
+            for (int index_y = y_start; index_y<= y+round(size/2); index_y++)
             {
                 addOccupancy(index_x,index_y,100);
             }
@@ -276,4 +288,3 @@ int main(int argc, char **argv)
 
   return 0;
 }
-
