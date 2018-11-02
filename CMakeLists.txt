@@ -14,6 +14,9 @@ find_package(
   ras_maze_map
   visualization_msgs
   geometry_msgs
+  sensor_msgs
+  tf
+  laser_geometry
 )
 
 
@@ -51,7 +54,7 @@ catkin_package(
   DEPENDS
 #  INCLUDE_DIRS include
 #  LIBRARIES robot_map
-  CATKIN_DEPENDS nav_msgs roscpp ras_maze_map visualization_msgs geometry_msgs
+  CATKIN_DEPENDS nav_msgs roscpp ras_maze_map visualization_msgs geometry_msgs sensor_msgs tf laser_geometry
 #  DEPENDS system_lib
 )
 
@@ -68,5 +71,9 @@ include_directories(
 
 add_executable(map_node src/map_node.cpp)
 target_link_libraries(map_node ${catkin_LIBRARIES})
+
+
+add_executable(find_walls src/extract_walls.cpp)
+target_link_libraries(find_walls ${catkin_LIBRARIES})
 
 
