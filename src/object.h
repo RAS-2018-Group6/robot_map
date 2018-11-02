@@ -1,6 +1,0 @@
-class ValuableObject
-{
-public:
-	ValuableObject();
-};
-	
