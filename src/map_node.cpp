@@ -36,7 +36,7 @@ public:
         tf_listener = new tf::TransformListener();
 
         map_resolution = res; //Every element corresponds to a res*res cm area
-        object_size = 0.1; // side length of square object
+        object_size = 0.05; // side length of square object
         nColumns = (int) round((height/map_resolution)+0.5);
         nRows = (int) round((width/map_resolution)+0.5);
         ROS_INFO("Grid map rows: %i, cols: %i",nRows,nColumns);
@@ -138,15 +138,15 @@ public:
             ROS_ERROR("Transform exception in map_node.");
         }
         publishMapToTopic();
-
     }
     */
 
-    void objectCallback(const geometry_msgs::Pose::ConstPtr& msg)
+    void objectCallback(const geometry_msgs::PointStamped::ConstPtr& msg)
     {
         int x,y;
-        x = mToCell(msg->position.x);
-        y = mToCell(msg->position.y);
+        x = mToCell(msg->point.x);
+        y = mToCell(msg->point.y);
+        ROS_INFO("Placed Object at (%i,%i)",x,y);
         addObject(x,y);
 
     }
@@ -157,10 +157,21 @@ public:
 
 
         int size = mToCell(object_size);
+        int x_start = x-round(size/2);
+        int y_start = y-round(size/2);
 
-        for (int index_x = x-round(size/2); index_x <= x+round(size/2); index_x++)
+        if (x_start < 0)
         {
-            for (int index_y = y-round(size/2); index_y<= y+round(size/2); index_y++)
+          x_start = 0;
+        }
+        if (y_start < 0)
+        {
+          y_start = 0;
+        }
+
+        for (int index_x = x_start; index_x <= x+round(size/2); index_x++)
+        {
+            for (int index_y = y_start; index_y<= y+round(size/2); index_y++)
             {
                 addOccupancy(index_x,index_y,100);
             }
@@ -448,4 +459,3 @@ int main(int argc, char **argv)
 
   return 0;
 }
-
