@@ -1,0 +1,6 @@
+class ValuableObject
+{
+public:
+	ValuableObject();
+};
+	

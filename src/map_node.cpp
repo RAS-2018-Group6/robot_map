@@ -1,9 +1,7 @@
 
 #include <ros/ros.h>
 #include <nav_msgs/OccupancyGrid.h>
-#include <geometry_msgs/Pose.h>
 #include <geometry_msgs/PointStamped.h>
-#include <geometry_msgs/Point32.h>
 #include <sensor_msgs/LaserScan.h>
 #include <sensor_msgs/PointCloud.h>
 #include <tf/transform_listener.h>
@@ -12,8 +10,24 @@
 #include <sstream>
 #include <string>
 #include <fstream>
+#include <vector>
 
 //using namespace std;
+
+class ValuableObject
+{
+public:
+    double x;
+    double y;
+    int type;
+
+    ValuableObject(double x0, double y0, int t)
+    {
+        x = x0;
+        y = y0;
+        type = t;
+    }
+};
 
 class MapNode
 {
@@ -22,17 +36,17 @@ public:
     ros::NodeHandle n;
     ros::Publisher pub_gridmap;
     ros::Subscriber sub_objectsToAdd;
-    ros::Subscriber sub_wall;
     ros::Subscriber sub_laser;
     tf::TransformListener *tf_listener;
+    std::vector<ValuableObject> foundObjects;
 
 
 
 
     MapNode(ros::NodeHandle node, double height,double width, double res)
     {
+        //ValuableObject myobj(1,1,1);
         n = node;
-
         tf_listener = new tf::TransformListener();
 
         map_resolution = res; //Every element corresponds to a res*res cm area
@@ -41,27 +55,19 @@ public:
         nRows = (int) round((width/map_resolution)+0.5);
         ROS_INFO("Grid map rows: %i, cols: %i",nRows,nColumns);
 
-        //std::vector<int8_t> initialmap;
-        //initialmap.resize((nRows)*(nColumns));
-
-        //map_msg.data = initialmap;
         map_msg.data.resize((nRows)*(nColumns));
         map_msg.header.frame_id = "/map";
         map_msg.info.resolution = map_resolution;
         map_msg.info.height = nColumns; //nRows;
         map_msg.info.width = nRows; //nColumns;
-
-        // grid msg has different default origin compared to given map
-        map_msg.info.origin.orientation.y = 1;
+        map_msg.info.origin.orientation.y = 1; // grid msg has different default origin compared to given map
         map_msg.info.origin.orientation.x = 1;
 
         pub_gridmap = n.advertise<nav_msgs::OccupancyGrid>("/grid_map",1);
-        sub_objectsToAdd = n.subscribe<geometry_msgs::Pose>("/found_object",1,&MapNode::objectCallback,this);
-        //sub_wall = n.subscribe<geometry_msgs::PointStamped>("/wall_point",10000,&MapNode::pointCallback,this);
+        sub_objectsToAdd = n.subscribe<geometry_msgs::PointStamped>("/found_object",1,&MapNode::objectCallback,this);
         sub_laser = n.subscribe<sensor_msgs::LaserScan>("/scan",1,&MapNode::laserCallback,this);
-
-
     }
+
     ~MapNode()
     {
         delete tf_listener;
@@ -85,7 +91,6 @@ public:
         {
             ROS_ERROR("Transform error in map node: %s", ex.what());
             return;
-
         }
 
 
@@ -93,8 +98,6 @@ public:
         {
             rayTrace(laser_tf.getOrigin().x()+0.2, laser_tf.getOrigin().y()+0.2,cloud.points[i].x+0.2,cloud.points[i].y+0.2);
         }
-        //publishMapToTopic();
-
 
     }
 
@@ -107,46 +110,33 @@ public:
                 double x = x0;
                 double y = y0;
 
-                while (current_dist <= dist)
+                while (current_dist < dist)
                 {
                     decreaseOccupancy(mToCell(x),mToCell(y));
                     x = x+map_resolution*cos(phi);
                     y = y+map_resolution*sin(phi);
                     current_dist = current_dist+map_resolution;
-
                 }
     }
 
-    /*
-    void pointCallback(const geometry_msgs::PointStamped::ConstPtr& msg)
-    {
-        tf::TransformListener tf_listener;
-        tf::StampedTransform laser_tf;
-
-
-        try
-        {
-
-            tf_listener.waitForTransform("map", "laser", ros::Time(0),ros::Duration(2));
-            tf_listener.lookupTransform("map", "laser",ros::Time(0), laser_tf);
-            //ROS_INFO("Line: [%i, %i -> %i, %i]",mToCell(laser_tf.getOrigin().x()), mToCell(laser_tf.getOrigin().y()),mToCell(msg->point.x),mToCell(msg->point.y));
-
-            rayTrace(mToCell(laser_tf.getOrigin().x()+0.2), mToCell(laser_tf.getOrigin().y()+0.2),mToCell(msg->point.x+0.2),mToCell(msg->point.y+0.2));
-
-        }catch(tf::TransformException ex)
-        {
-            ROS_ERROR("Transform exception in map_node.");
-        }
-        publishMapToTopic();
-    }
-    */
 
     void objectCallback(const geometry_msgs::PointStamped::ConstPtr& msg)
     {
-        int x,y;
+        int x,y,type;
         x = mToCell(msg->point.x);
         y = mToCell(msg->point.y);
-        ROS_INFO("Placed Object at (%i,%i)",x,y);
+        type = (int) msg->point.z;
+
+        for (int i = 0; i < foundObjects.size(); i++)
+        {
+            if (foundObjects[i].x == x && foundObjects[i].y == y)
+            {
+                // object already seen
+                return;
+            }
+        }
+        foundObjects.push_back(*(new ValuableObject(x,y,type)));
+        ROS_INFO("Placed Object at (%i,%i) of class: %i",x,y,type);
         addObject(x,y);
 
     }
@@ -154,8 +144,6 @@ public:
     void addObject(int x, int y)
     {
         // Assumes coordinates is already in map frame
-
-
         int size = mToCell(object_size);
         int x_start = x-round(size/2);
         int y_start = y-round(size/2);
@@ -180,17 +168,8 @@ public:
 
     void rayTrace(double x_robot, double y_robot, double x, double y)
     {
-        // decrease line of sight to point
-        //addLine(x_robot,y_robot,x,y,"decrease");
-        // increase laser point
         clearLineOfSight(x_robot,y_robot,x,y);
         increaseOccupancy(mToCell(x),mToCell(y));
-        addObject(mToCell(x_robot),mToCell(y_robot));
-    }
-
-    double getXofY(double x, double k,double m)
-    {
-        return k*x+m;
     }
 
 
@@ -338,12 +317,18 @@ public:
 
         if (0 <= index && index < nRows*nColumns)
         {
-            if (map_msg.data[index] < 80)
+            if (map_msg.data[index] == 100)
+            {
+                // dont mess with occupancy 100 cells!
+                return;
+            }
+            else if (map_msg.data[index] <= 79)
             {
                 map_msg.data[index] = map_msg.data[index]+20;
             }else
             {
-                map_msg.data[index] = 100;
+                // occupancy 100 reserved for fixed walls and objects
+                map_msg.data[index] = 99;
             }
         }else
         {
@@ -357,7 +342,12 @@ public:
 
         if (0 <= index && index < nRows*nColumns)
         {
-            if (map_msg.data[index] > 10)
+            if (map_msg.data[index] == 100)
+            {
+                // fixed wall or object, dont decrease
+                return;
+            }
+            else if (map_msg.data[index] > 10)
             {
                 map_msg.data[index] = map_msg.data[index]-10;
             }else
@@ -369,7 +359,6 @@ public:
             ROS_INFO("Map index out of bounds: %i, Max: %i", index, nRows*nColumns-1);
         }
     }
-
 
 
     void publishMapToTopic()
@@ -441,21 +430,14 @@ int main(int argc, char **argv)
     {
         map_node.addLine(x1_points[i],y1_points[i],x2_points[i],y2_points[i], "fill");
     }
-    map_node.publishMapToTopic();
-    //ros::sleep(1);
-    //map_node.addObject(50,20);
-
-    //ros::spin();
 
 
     while(ros::ok())
     {
-    ros::spinOnce();
-    map_node.publishMapToTopic();
-    loop_rate.sleep();
+        ros::spinOnce();
+        map_node.publishMapToTopic();
+        loop_rate.sleep();
     }
-
-
 
   return 0;
 }
