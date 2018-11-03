@@ -73,7 +73,3 @@ add_executable(map_node src/map_node.cpp)
 target_link_libraries(map_node ${catkin_LIBRARIES})
 
 
-add_executable(find_walls src/extract_walls.cpp)
-target_link_libraries(find_walls ${catkin_LIBRARIES})
-
-
