@@ -73,3 +73,7 @@ add_executable(map_node src/map_node.cpp)
 target_link_libraries(map_node ${catkin_LIBRARIES})
 
 
+add_executable(map_smoother src/map_smoother.cpp)
+target_link_libraries(map_smoother ${catkin_LIBRARIES})
+
+
