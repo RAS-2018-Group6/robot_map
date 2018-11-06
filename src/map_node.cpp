@@ -47,8 +47,8 @@ public:
         map_msg.info.resolution = map_resolution;
         map_msg.info.height = nColumns; //nRows;
         map_msg.info.width = nRows; //nColumns;
-        map_msg.info.origin.orientation.y = 1; // grid msg has different default origin compared to given map
-        map_msg.info.origin.orientation.x = 1;
+        //map_msg.info.origin.orientation.y = 1; // grid msg has different default origin compared to given map
+        //map_msg.info.origin.orientation.x = 1;
 
         pub_gridmap = n.advertise<nav_msgs::OccupancyGrid>("/grid_map",1);
         sub_objectsToAdd = n.subscribe<geometry_msgs::PointStamped>("/found_object",1,&MapNode::objectCallback,this);
@@ -284,7 +284,7 @@ public:
 
     void addOccupancy(int x, int y, int value)
     {
-        int index = x*nRows+y;
+        int index = y*nRows+x;
         if ((value < 0) || (value > 100))
         {
             ROS_INFO("Map recieved invalid occupancy value [%i]. Value must be in [0,100]", value);
@@ -300,7 +300,7 @@ public:
 
     void increaseOccupancy(int x, int y)
     {
-        int index = x*nRows+y;
+        int index = y*nRows+x;
 
         if (0 <= index && index < nRows*nColumns)
         {
@@ -325,7 +325,7 @@ public:
 
     void decreaseOccupancy(int x, int y)
     {
-        int index = x*nRows+y;
+        int index = y*nRows+x;
 
         if (0 <= index && index < nRows*nColumns)
         {
