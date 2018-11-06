@@ -1,10 +1,12 @@
 <launch>
-	
+
 	<arg name="map_file" default="lab_maze_2018.txt" />
 
 	<node pkg="robot_map" type="map_node" name="map_node" output="screen" >
 		 <param name="map_file" value="$(find ras_maze_map)/maps/$(arg map_file)"/>
 	</node>
+
+	<node pkg="robot_map" type="map_smoother" name="map_smoother">	</node>
 
 
 </launch>

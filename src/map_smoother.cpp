@@ -49,6 +49,8 @@ public:
         smooth_map.info.resolution = map_resolution;
         smooth_map.info.height = nColumns;
         smooth_map.info.width = nRows;
+        smooth_map.info.origin.orientation.y = 1; // grid msg has different default origin compared to given map
+        smooth_map.info.origin.orientation.x = 1;
 
 
         smooth_map.data.resize(nRows*nColumns);
