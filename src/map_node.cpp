@@ -47,8 +47,6 @@ public:
         map_msg.info.resolution = map_resolution;
         map_msg.info.height = nColumns; //nRows;
         map_msg.info.width = nRows; //nColumns;
-        //map_msg.info.origin.orientation.y = 1; // grid msg has different default origin compared to given map
-        //map_msg.info.origin.orientation.x = 1;
 
         pub_gridmap = n.advertise<nav_msgs::OccupancyGrid>("/grid_map",1);
         sub_objectsToAdd = n.subscribe<geometry_msgs::PointStamped>("/found_object",1,&MapNode::objectCallback,this);
@@ -64,9 +62,7 @@ public:
 
     void laserCallback(const sensor_msgs::LaserScan::ConstPtr& scan_msg)
     {
-        return;
 
-        /*
         laser_geometry::LaserProjection projector;
         tf::StampedTransform laser_tf;
         sensor_msgs::PointCloud cloud;
@@ -88,7 +84,7 @@ public:
         {
             rayTrace(laser_tf.getOrigin().x()+0.2, laser_tf.getOrigin().y()+0.2,cloud.points[i].x+0.2,cloud.points[i].y+0.2);
         }
-        */
+
 
     }
 

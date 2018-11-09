@@ -13,8 +13,6 @@
 #include <vector>
 #include "object.cpp"
 
-//using namespace std;
-
 
 class SmoothMap
 {
@@ -22,55 +20,53 @@ class SmoothMap
 public:
     ros::NodeHandle n;
     ros::Publisher pub_gridmap;
-    ros::Subscriber sub_gridmap;
 
 
-    SmoothMap(ros::NodeHandle node)
+    SmoothMap(ros::NodeHandle node, double height,double width, double res)
     {
         n = node;
 
-        kernelSize = 4;
+        kernelSize = 4; // size of smoothed area
+        map_resolution = res; //Every element corresponds to a res*res cm area
+        nColumns = (int) round((height/map_resolution)+0.5); // round upwards
+        nRows = (int) round((width/map_resolution)+0.5);
+        ROS_INFO("Grid map rows: %i, cols: %i",nRows,nColumns);
+
+        smooth_map.data.resize((nRows)*(nColumns));
+        smooth_map.header.frame_id = "/map";
+        smooth_map.info.resolution = map_resolution;
+        smooth_map.info.height = nColumns; //nRows;
+        smooth_map.info.width = nRows; //nColumns;
+
         pub_gridmap = n.advertise<nav_msgs::OccupancyGrid>("/smooth_map",1);
-        sub_gridmap = n.subscribe<nav_msgs::OccupancyGrid>("/grid_map",1,&SmoothMap::mapCallback,this);
 
     }
 
 
-    void mapCallback(const nav_msgs::OccupancyGrid::ConstPtr& map_msg)
+    void smoothMap()
     {
-        map_resolution = map_msg->info.resolution;
-        nColumns = map_msg->info.height;
-        nRows = map_msg->info.width;
-
-        nav_msgs::OccupancyGrid map;
-
-        smooth_map = map;
-
-        smooth_map.info.resolution = map_resolution;
-        smooth_map.info.height = nColumns;
-        smooth_map.info.width = nRows;
-        smooth_map.info.origin.orientation.y = 1; // grid msg has different default origin compared to given map
-        smooth_map.info.origin.orientation.x = 1;
-
-
-        smooth_map.data.resize(nRows*nColumns);
-
-        //boundaries??
         ROS_INFO("Smoothing map");
         for (int x = 0; x <= nColumns; x++)
         {
             for (int y = 0; y<= nRows; y++)
             {
-                if (map_msg->data[x*nRows+y] >= 99)
+                if (smooth_map.data[y*nRows+x] == 100)
                 {
                     smoothArea(x,y);
-                    addOccupancy(x,y,100);
                 }
             }
         }
+    }
 
+    void publishMapToTopic()
+    {
         pub_gridmap.publish(smooth_map);
-        ROS_INFO("Map published");
+    }
+
+    int mToCell(double x)
+    {
+        // converts x from meters to grid cell coordinate
+        return (int) round(x/map_resolution);
     }
 
 
@@ -83,11 +79,11 @@ public:
 
         if (x_start < 0)
         {
-          x_start = 0;
+            x_start = 0;
         }
         if (y_start < 0)
         {
-          y_start = 0;
+            y_start = 0;
         }
 
         float k;
@@ -96,7 +92,6 @@ public:
             for (int index_y = y_start; index_y<= y+round(size/2); index_y++)
             {
                 k = 1 / (1+sqrt(pow(x-index_x,2)+pow(y-index_y,2)));
-                //ROS_INFO("K: %f",k);
                 increaseOccupancy(index_x,index_y,round(k*15));
 
             }
@@ -104,27 +99,9 @@ public:
     }
 
 
-    void addOccupancy(int x, int y, int value)
-    {
-        int index = x*nRows+y;
-        if ((value < 0) || (value > 100))
-        {
-            //ROS_INFO("Map recieved invalid occupancy value [%i]. Value must be in [0,100]", value);
-            return;
-        }
-        else if (0<= index && index < nRows*nColumns)
-        {
-            smooth_map.data[index] = value;
-        }else
-        {
-            //ROS_INFO("Map index out of bounds: %i, Max: %i", index, nRows*nColumns-1);
-            return;
-        }
-    }
-
     void increaseOccupancy(int x, int y, int inc_value)
     {
-        int index = x*nRows+y;
+        int index = y*nRows+x;
         int value;
 
         if (0<= index && index < nRows*nColumns)
@@ -144,6 +121,120 @@ public:
     }
 
 
+    void addLineLow(double x0_d, double y0_d, double x1_d, double y1_d)
+    {
+        // Implements Bresenhams line algorithm for integers
+        int x0,x1,y0,y1,dx,dy,D,y,yi;
+        x0 = mToCell(x0_d);
+        x1 = mToCell(x1_d);
+        y0 = mToCell(y0_d);
+        y1 = mToCell(y1_d);
+
+        dx = x1-x0;
+        dy = y1-y0;
+        yi = 1;
+
+        if (dy <0)
+        {
+            yi = -1;
+            dy = -dy;
+        }
+
+        D = 2*dy-dx;
+        y = y0;
+
+        for (int x = x0; x<=x1; x++)
+        {
+            addOccupancy(x,y,100);
+
+            if (D > 0)
+            {
+                y = y+yi;
+                D = D-2*dx;
+            }
+            D = D+2*dy;
+        }
+    }
+
+    void addLineHigh(double x0_d, double y0_d, double x1_d, double y1_d)
+    {
+        // Implements Bresenhams line algorithm for integers
+        int x0,x1,y0,y1,dx,dy,D,x,xi;
+        x0 = mToCell(x0_d);
+        x1 = mToCell(x1_d);
+        y0 = mToCell(y0_d);
+        y1 = mToCell(y1_d);
+
+        dx = x1-x0;
+        dy = y1-y0;
+        xi = 1;
+
+        if (dx < 0)
+        {
+            xi = -1;
+            dx = -dx;
+        }
+
+        D = 2*dx-dy;
+        x = x0;
+
+        for (int y = y0; y<=y1; y++)
+        {
+            addOccupancy(x,y,100);
+
+            if (D > 0)
+            {
+                x = x+xi;
+                D = D-2*dy;
+            }
+            D = D+2*dx;
+        }
+
+    }
+
+
+    void addLine(double x0, double y0, double x1, double y1)
+    {
+        // Decides how to add line depending on derivative and starting point x0,y0
+        if (fabs(y1-y0) < fabs(x1-x0))
+        {
+            if (x0 > x1)
+            {
+                addLineLow(x1,y1,x0,y0);
+            }else
+            {
+                addLineLow(x0,y0,x1,y1);
+            }
+        }else
+        {
+            if (y0 > y1)
+            {
+                addLineHigh(x1,y1,x0,y0);
+            }else
+            {
+                addLineHigh(x0,y0,x1,y1);
+            }
+        }
+    }
+
+
+    void addOccupancy(int x, int y, int value)
+    {
+        int index = y*nRows+x;
+        if ((value < 0) || (value > 100))
+        {
+            ROS_INFO("Map recieved invalid occupancy value [%i]. Value must be in [0,100]", value);
+        }
+        else if (0<= index && index < nRows*nColumns)
+        {
+            smooth_map.data[index] = value;
+        }else
+        {
+            ROS_INFO("Map index out of bounds: %i, Max: %i", index, nRows*nColumns-1);
+        }
+    }
+
+
 private:
     nav_msgs::OccupancyGrid smooth_map;
     int kernelSize;
@@ -156,18 +247,66 @@ private:
 
 int main(int argc, char **argv)
 {
-    ros::init(argc, argv, "map_smoother");
+    ros::init(argc, argv, "map_node");
     ros::NodeHandle n("~");
-    ros::Rate loop_rate(2);
+    ros::Rate loop_rate(1);
 
-    SmoothMap map_node = SmoothMap(n);
+    std::string _map_file;
+    n.param<std::string>("map_file", _map_file, "lab_maze_2018.txt");
 
+    ROS_INFO_STREAM("Loading the maze map from " << _map_file);
+
+    std::ifstream map_fs; map_fs.open(_map_file.c_str());
+    if (!map_fs.is_open()){
+        ROS_ERROR_STREAM("Could not find map file: "<<_map_file);
+        return -1;
+    }
+
+    std::vector<double> x1_points;
+    std::vector<double> x2_points;
+    std::vector<double> y1_points;
+    std::vector<double> y2_points;
+    double max_x = 0;
+    double max_y = 0;
+
+    std::string line;
+    while(getline(map_fs, line))
+    {
+        if( ! (line[0]=='#') )
+        {
+            std::istringstream line_stream(line);
+            double x1, y1, x2, y2;
+            line_stream >> x1 >> y1 >> x2 >> y2;
+            x1_points.push_back(x1);
+            x2_points.push_back(x2);
+            y1_points.push_back(y1);
+            y2_points.push_back(y2);
+            max_x = fmax(max_x,x1);
+            max_x = fmax(max_x,x2);
+            max_y = fmax(max_y,y1);
+            max_y = fmax(max_y,y2);
+        }
+    }
+    ROS_INFO("Map dimensions: (%f x %f)",max_x,max_y);
+
+    double map_resolution = 0.01;
+    SmoothMap smooth_map_node = SmoothMap(n,max_x,max_y, map_resolution);
+
+
+    for (int i = 0; i < x1_points.size(); ++i)
+    {
+        smooth_map_node.addLine(x1_points[i],y1_points[i],x2_points[i],y2_points[i]);
+    }
+
+    smooth_map_node.smoothMap();
 
     while(ros::ok())
     {
         ros::spinOnce();
+        smooth_map_node.publishMapToTopic();
         loop_rate.sleep();
     }
 
-  return 0;
+    return 0;
 }
+

@@ -6,7 +6,9 @@
 		 <param name="map_file" value="$(find ras_maze_map)/maps/$(arg map_file)"/>
 	</node>
 
-	<node pkg="robot_map" type="map_smoother" name="map_smoother">	</node>
+	<node pkg="robot_map" type="map_smoother" name="map_smoother" output="screen" >
+		 <param name="map_file" value="$(find ras_maze_map)/maps/$(arg map_file)"/>
+	</node>
 
 
 </launch>
