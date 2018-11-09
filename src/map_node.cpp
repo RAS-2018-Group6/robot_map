@@ -64,6 +64,9 @@ public:
 
     void laserCallback(const sensor_msgs::LaserScan::ConstPtr& scan_msg)
     {
+        return;
+
+        /*
         laser_geometry::LaserProjection projector;
         tf::StampedTransform laser_tf;
         sensor_msgs::PointCloud cloud;
@@ -85,6 +88,7 @@ public:
         {
             rayTrace(laser_tf.getOrigin().x()+0.2, laser_tf.getOrigin().y()+0.2,cloud.points[i].x+0.2,cloud.points[i].y+0.2);
         }
+        */
 
     }
 
@@ -109,6 +113,7 @@ public:
 
     void objectCallback(const geometry_msgs::PointStamped::ConstPtr& msg)
     {
+        return;
         int x,y,type;
         x = mToCell(msg->point.x);
         y = mToCell(msg->point.y);
