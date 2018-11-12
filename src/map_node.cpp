@@ -30,7 +30,7 @@ public:
 
 
 
-    MapNode(ros::NodeHandle node, double height,double width, double res)
+    MapNode(ros::NodeHandle node, double width,double height, double res)
     {
         //ValuableObject myobj(1,1,1);
         n = node;
@@ -38,15 +38,15 @@ public:
 
         map_resolution = res; //Every element corresponds to a res*res cm area
         object_size = 0.05; // side length of square object
-        nColumns = (int) round((height/map_resolution)+0.5);
-        nRows = (int) round((width/map_resolution)+0.5);
+        nColumns = (int) round((width/map_resolution)+0.5); // +0.5
+        nRows = (int) round((height/map_resolution)+0.5); // +0.5
         ROS_INFO("Grid map rows: %i, cols: %i",nRows,nColumns);
 
         map_msg.data.resize((nRows)*(nColumns));
         map_msg.header.frame_id = "/map";
         map_msg.info.resolution = map_resolution;
-        map_msg.info.height = nColumns; //nRows;
-        map_msg.info.width = nRows; //nColumns;
+        map_msg.info.height = nRows;
+        map_msg.info.width = nColumns;
 
         pub_gridmap = n.advertise<nav_msgs::OccupancyGrid>("/grid_map",1);
         sub_objectsToAdd = n.subscribe<geometry_msgs::PointStamped>("/found_object",1,&MapNode::objectCallback,this);
@@ -285,7 +285,7 @@ public:
 
     void addOccupancy(int x, int y, int value)
     {
-        int index = y*nRows+x;
+        int index = y*nColumns+x;
         if ((value < 0) || (value > 100))
         {
             ROS_INFO("Map recieved invalid occupancy value [%i]. Value must be in [0,100]", value);
@@ -301,7 +301,7 @@ public:
 
     void increaseOccupancy(int x, int y)
     {
-        int index = y*nRows+x;
+        int index = y*nColumns+x;
 
         if (0 <= index && index < nRows*nColumns)
         {
@@ -326,7 +326,7 @@ public:
 
     void decreaseOccupancy(int x, int y)
     {
-        int index = y*nRows+x;
+        int index = y*nColumns+x;
 
         if (0 <= index && index < nRows*nColumns)
         {

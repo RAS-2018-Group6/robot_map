@@ -22,21 +22,21 @@ public:
     ros::Publisher pub_gridmap;
 
 
-    SmoothMap(ros::NodeHandle node, double height,double width, double res)
+    SmoothMap(ros::NodeHandle node, double width,double height, double res)
     {
         n = node;
 
         kernelSize = 4; // size of smoothed area
         map_resolution = res; //Every element corresponds to a res*res cm area
-        nColumns = (int) round((height/map_resolution)+0.5); // round upwards
-        nRows = (int) round((width/map_resolution)+0.5);
+        nColumns = (int) round((width/map_resolution)+0.5); // round upwards
+        nRows = (int) round((height/map_resolution)+0.5);
         ROS_INFO("Grid map rows: %i, cols: %i",nRows,nColumns);
 
         smooth_map.data.resize((nRows)*(nColumns));
         smooth_map.header.frame_id = "/map";
         smooth_map.info.resolution = map_resolution;
-        smooth_map.info.height = nColumns; //nRows;
-        smooth_map.info.width = nRows; //nColumns;
+        smooth_map.info.height = nRows;
+        smooth_map.info.width = nColumns;
 
         pub_gridmap = n.advertise<nav_msgs::OccupancyGrid>("/smooth_map",1);
 
@@ -46,11 +46,11 @@ public:
     void smoothMap()
     {
         ROS_INFO("Smoothing map");
-        for (int x = 0; x <= nColumns; x++)
+        for (int x = 0; x <= nRows; x++)
         {
-            for (int y = 0; y<= nRows; y++)
+            for (int y = 0; y<= nColumns; y++)
             {
-                if (smooth_map.data[y*nRows+x] == 100)
+                if (smooth_map.data[y*nColumns+x] == 100)
                 {
                     smoothArea(x,y);
                 }
@@ -101,7 +101,7 @@ public:
 
     void increaseOccupancy(int x, int y, int inc_value)
     {
-        int index = y*nRows+x;
+        int index = y*nColumns+x;
         int value;
 
         if (0<= index && index < nRows*nColumns)
@@ -116,7 +116,8 @@ public:
             }
         }else
         {
-            ROS_INFO("Map index out of bounds: %i, Max: %i", index, nRows*nColumns-1);
+            //ROS_INFO("Map index out of bounds: %i, Max: %i", index, nRows*nColumns-1);
+            return;
         }
     }
 
@@ -220,7 +221,7 @@ public:
 
     void addOccupancy(int x, int y, int value)
     {
-        int index = y*nRows+x;
+        int index = y*nColumns+x;
         if ((value < 0) || (value > 100))
         {
             ROS_INFO("Map recieved invalid occupancy value [%i]. Value must be in [0,100]", value);
@@ -230,7 +231,8 @@ public:
             smooth_map.data[index] = value;
         }else
         {
-            ROS_INFO("Map index out of bounds: %i, Max: %i", index, nRows*nColumns-1);
+            //ROS_INFO("Map index out of bounds: %i, Max: %i", index, nRows*nColumns-1);
+            return;
         }
     }
 
