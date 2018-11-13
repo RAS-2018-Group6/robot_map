@@ -82,7 +82,7 @@ public:
 
         for(int i = 0; i < cloud.points.size(); i++)
         {
-            rayTrace(laser_tf.getOrigin().x()+0.2, laser_tf.getOrigin().y()+0.2,cloud.points[i].x+0.2,cloud.points[i].y+0.2);
+            rayTrace(laser_tf.getOrigin().x(), laser_tf.getOrigin().y(),cloud.points[i].x,cloud.points[i].y);
         }
 
 
