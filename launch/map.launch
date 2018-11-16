@@ -10,5 +10,7 @@
 		 <param name="map_file" value="$(find ras_maze_map)/maps/$(arg map_file)"/>
 	</node>
 
+<remap from="grid_map" to="/map" />
+
 
 </launch>

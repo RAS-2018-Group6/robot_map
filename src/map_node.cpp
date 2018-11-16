@@ -8,12 +8,14 @@
 #include <laser_geometry/laser_geometry.h>
 #include <math.h>
 #include <sstream>
+#include <iostream>
 #include <string>
 #include <fstream>
 #include <vector>
 #include "object.cpp"
 
-//using namespace std;
+#define LOAD_MAP_FROM_FILE 1 // load previously saved map
+#define RESOLUTION 0.02
 
 
 class MapNode
@@ -26,8 +28,6 @@ public:
     ros::Subscriber sub_laser;
     tf::TransformListener *tf_listener;
     std::vector<ValuableObject> foundObjects;
-
-
 
 
     MapNode(ros::NodeHandle node, double width,double height, double res)
@@ -47,6 +47,24 @@ public:
         map_msg.info.resolution = map_resolution;
         map_msg.info.height = nRows;
         map_msg.info.width = nColumns;
+
+        pub_gridmap = n.advertise<nav_msgs::OccupancyGrid>("/grid_map",1);
+        sub_objectsToAdd = n.subscribe<geometry_msgs::PointStamped>("/found_object",1,&MapNode::objectCallback,this);
+        sub_laser = n.subscribe<sensor_msgs::LaserScan>("/scan",1,&MapNode::laserCallback,this);
+    }
+
+    MapNode(ros::NodeHandle node)
+    {
+        n = node;
+        tf_listener = new tf::TransformListener();
+
+        loadMap();
+
+        map_resolution = map_msg.info.resolution;
+        object_size = 0.05; // side length of square object
+        nColumns = map_msg.info.width;
+        nRows = map_msg.info.height;
+        ROS_INFO("Grid map rows: %i, cols: %i",nRows,nColumns);
 
         pub_gridmap = n.advertise<nav_msgs::OccupancyGrid>("/grid_map",1);
         sub_objectsToAdd = n.subscribe<geometry_msgs::PointStamped>("/found_object",1,&MapNode::objectCallback,this);
@@ -88,8 +106,9 @@ public:
 
     }
 
-    void clearLineOfSight(double x0, double y0, double x1, double y1)
+    bool clearLineOfSight(double x0, double y0, double x1, double y1)
             {
+            // Returns 1 if no wall was in the way. Prevents from adding occupancy behind known walls.
                 double phi = atan2(y1-y0,x1-x0);
                 double dist = sqrt(pow(x0-x1,2) + pow(y0-y1,2));
                 double current_dist = 0;
@@ -99,11 +118,16 @@ public:
 
                 while (current_dist < dist)
                 {
+                    if (map_msg.data[mToCell(y)*nColumns+mToCell(x)] == 100){
+                        return 0;
+                    }
                     decreaseOccupancy(mToCell(x),mToCell(y));
                     x = x+map_resolution*cos(phi);
                     y = y+map_resolution*sin(phi);
                     current_dist = current_dist+map_resolution;
                 }
+
+            return 1;
     }
 
 
@@ -156,8 +180,10 @@ public:
 
     void rayTrace(double x_robot, double y_robot, double x, double y)
     {
-        clearLineOfSight(x_robot,y_robot,x,y);
-        increaseOccupancy(mToCell(x),mToCell(y));
+        if (clearLineOfSight(x_robot,y_robot,x,y)){
+            // if no known walls was in the way.
+            increaseOccupancy(mToCell(x),mToCell(y));
+        }
     }
 
 
@@ -348,6 +374,48 @@ public:
         }
     }
 
+    void loadMap(){
+        std::fstream mapfile("/home/ras/catkin_ws/src/robot_map/map.txt");
+
+
+        float line;
+        mapfile>>line;
+        map_msg.info.height = (int) line;
+        mapfile>>line;
+        map_msg.info.width = (int) line;
+        mapfile>>line;
+        map_msg.info.resolution = line;
+        map_msg.data.resize(map_msg.info.height*map_msg.info.width);
+        map_msg.header.frame_id = "/map";
+
+        int i = 0;
+        while(mapfile >> line)
+        {
+            map_msg.data[i] = (int) line;
+            i++;
+        }
+
+        mapfile.close();
+
+    }
+
+    void saveMap(){
+
+        std::ofstream mapfile;
+        mapfile.open("/home/ras/catkin_ws/src/robot_map/map.txt");
+        if (mapfile.is_open()){
+            ROS_INFO("File open");
+        }
+        mapfile << map_msg.info.height << "\n";
+        mapfile << map_msg.info.width << "\n";
+        mapfile << map_msg.info.resolution << "\n";
+        for (int i = 0; i < map_msg.data.size(); i++){
+            mapfile << (int) map_msg.data[i] << "\n";
+        }
+        mapfile.close();
+        ROS_INFO("Map saved to file.");
+    }
+
 
     void publishMapToTopic()
     {
@@ -370,60 +438,70 @@ int main(int argc, char **argv)
     ros::init(argc, argv, "map_node");
     ros::NodeHandle n("~");
     ros::Rate loop_rate(5);
+    MapNode *map_node;
 
-    std::string _map_file;
-    n.param<std::string>("map_file", _map_file, "lab_maze_2018.txt");
-
-    ROS_INFO_STREAM("Loading the maze map from " << _map_file);
-
-    std::ifstream map_fs; map_fs.open(_map_file.c_str());
-    if (!map_fs.is_open()){
-        ROS_ERROR_STREAM("Could not find map file: "<<_map_file);
-        return -1;
-    }
-
-    std::vector<double> x1_points;
-    std::vector<double> x2_points;
-    std::vector<double> y1_points;
-    std::vector<double> y2_points;
-    double max_x = 0;
-    double max_y = 0;
-
-    std::string line;
-    while(getline(map_fs, line))
+    if(LOAD_MAP_FROM_FILE)
     {
-        if( ! (line[0]=='#') )
-        {
-            std::istringstream line_stream(line);
-            double x1, y1, x2, y2;
-            line_stream >> x1 >> y1 >> x2 >> y2;
-            x1_points.push_back(x1);
-            x2_points.push_back(x2);
-            y1_points.push_back(y1);
-            y2_points.push_back(y2);
-            ROS_INFO("Got wall x1,y1,x2,y2: [%f, %f, %f, %f]", x1,y1,x2,y2);
-            max_x = fmax(max_x,x1);
-            max_x = fmax(max_x,x2);
-            max_y = fmax(max_y,y1);
-            max_y = fmax(max_y,y2);
+
+        ROS_INFO("Reading old map from file.");
+        map_node = new MapNode(n);
+
+    }else{
+        ROS_INFO("Creating new map.");
+        std::string _map_file;
+        n.param<std::string>("map_file", _map_file, "lab_maze_2018.txt");
+
+        ROS_INFO_STREAM("Loading the maze map from " << _map_file);
+
+        std::ifstream map_fs; map_fs.open(_map_file.c_str());
+        if (!map_fs.is_open()){
+            ROS_ERROR_STREAM("Could not find map file: "<<_map_file);
+            return -1;
         }
+
+        std::vector<double> x1_points;
+        std::vector<double> x2_points;
+        std::vector<double> y1_points;
+        std::vector<double> y2_points;
+        double max_x = 0;
+        double max_y = 0;
+
+        std::string line;
+        while(getline(map_fs, line))
+        {
+            if( ! (line[0]=='#') )
+            {
+                std::istringstream line_stream(line);
+                double x1, y1, x2, y2;
+                line_stream >> x1 >> y1 >> x2 >> y2;
+                x1_points.push_back(x1);
+                x2_points.push_back(x2);
+                y1_points.push_back(y1);
+                y2_points.push_back(y2);
+                ROS_INFO("Got wall x1,y1,x2,y2: [%f, %f, %f, %f]", x1,y1,x2,y2);
+                max_x = fmax(max_x,x1);
+                max_x = fmax(max_x,x2);
+                max_y = fmax(max_y,y1);
+                max_y = fmax(max_y,y2);
+            }
+        }
+        ROS_INFO("Map dimensions: (%f x %f)",max_x,max_y);
+
+       map_node = new MapNode(n,max_x,max_y, RESOLUTION);
+
+
+        for (int i = 0; i < x1_points.size(); ++i)
+        {
+            map_node->addLine(x1_points[i],y1_points[i],x2_points[i],y2_points[i], "fill");
+        }
+
+        map_node->saveMap();
     }
-    ROS_INFO("Map dimensions: (%f x %f)",max_x,max_y);
-
-    double map_resolution = 0.01;
-    MapNode map_node = MapNode(n,max_x,max_y, map_resolution);
-
-
-    for (int i = 0; i < x1_points.size(); ++i)
-    {
-        map_node.addLine(x1_points[i],y1_points[i],x2_points[i],y2_points[i], "fill");
-    }
-
 
     while(ros::ok())
     {
         ros::spinOnce();
-        map_node.publishMapToTopic();
+        map_node->publishMapToTopic();
         loop_rate.sleep();
     }
 
