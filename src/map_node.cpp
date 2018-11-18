@@ -14,8 +14,8 @@
 #include <vector>
 #include "object.cpp"
 
-#define LOAD_MAP_FROM_FILE 1 // load previously saved map
-#define RESOLUTION 0.02
+#define LOAD_MAP_FROM_FILE 0 // load previously saved map
+#define RESOLUTION 0.01
 
 
 class MapNode
@@ -109,6 +109,7 @@ public:
     bool clearLineOfSight(double x0, double y0, double x1, double y1)
             {
             // Returns 1 if no wall was in the way. Prevents from adding occupancy behind known walls.
+                int index;
                 double phi = atan2(y1-y0,x1-x0);
                 double dist = sqrt(pow(x0-x1,2) + pow(y0-y1,2));
                 double current_dist = 0;
@@ -118,13 +119,20 @@ public:
 
                 while (current_dist < dist)
                 {
-                    if (map_msg.data[mToCell(y)*nColumns+mToCell(x)] == 100){
+                    index = mToCell(y)*nColumns+mToCell(x);
+                    if (0 <= index && index < nRows*nColumns)
+                    {
+                        if (map_msg.data[mToCell(y)*nColumns+mToCell(x)] == 100){
+                            return 0;
+                        }
+                        decreaseOccupancy(mToCell(x),mToCell(y));
+                        x = x+map_resolution*cos(phi);
+                        y = y+map_resolution*sin(phi);
+                        current_dist = current_dist+map_resolution;
+                    }else
+                    {
                         return 0;
                     }
-                    decreaseOccupancy(mToCell(x),mToCell(y));
-                    x = x+map_resolution*cos(phi);
-                    y = y+map_resolution*sin(phi);
-                    current_dist = current_dist+map_resolution;
                 }
 
             return 1;
