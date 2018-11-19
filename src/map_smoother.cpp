@@ -26,7 +26,7 @@ public:
     {
         n = node;
 
-        kernelSize = 4; // size of smoothed area
+        kernelSize = 16; // size of smoothed area
         map_resolution = res; //Every element corresponds to a res*res cm area
         nColumns = (int) round((width/map_resolution)+0.5); // round upwards
         nRows = (int) round((height/map_resolution)+0.5);
@@ -92,7 +92,7 @@ public:
             for (int index_y = y_start; index_y<= y+round(size/2); index_y++)
             {
                 k = 1 / (1+sqrt(pow(x-index_x,2)+pow(y-index_y,2)));
-                increaseOccupancy(index_x,index_y,round(k*15));
+                increaseOccupancy(index_x,index_y,round(k*20));
 
             }
         }
