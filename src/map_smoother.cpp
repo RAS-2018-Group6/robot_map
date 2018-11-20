@@ -13,6 +13,8 @@
 #include <vector>
 #include "object.cpp"
 
+#define SIGMA 1.5 // standard deviation for gaussian smoothing
+#define KERNEL_SIZE 16 // size of smoothed area
 
 class SmoothMap
 {
@@ -26,7 +28,7 @@ public:
     {
         n = node;
 
-        kernelSize = 16; // size of smoothed area
+        //kernelSize = 16; // size of smoothed area
         map_resolution = res; //Every element corresponds to a res*res cm area
         nColumns = (int) round((width/map_resolution)+0.5); // round upwards
         nRows = (int) round((height/map_resolution)+0.5);
@@ -46,9 +48,9 @@ public:
     void smoothMap()
     {
         ROS_INFO("Smoothing map");
-        for (int x = 0; x <= nRows; x++)
+        for (int x = 0; x <= nColumns; x++)
         {
-            for (int y = 0; y<= nColumns; y++)
+            for (int y = 0; y<= nRows; y++)
             {
                 if (smooth_map.data[y*nColumns+x] == 100)
                 {
@@ -73,7 +75,7 @@ public:
     void smoothArea(int x, int y)
     {
         // Assumes coordinates is already in map frame
-        int size = kernelSize;
+        int size = KERNEL_SIZE;
         int x_start = x-round(size/2);
         int y_start = y-round(size/2);
 
@@ -86,39 +88,22 @@ public:
             y_start = 0;
         }
 
-        float k;
         for (int index_x = x_start; index_x <= x+round(size/2); index_x++)
         {
             for (int index_y = y_start; index_y<= y+round(size/2); index_y++)
             {
-                k = 1 / (1+sqrt(pow(x-index_x,2)+pow(y-index_y,2)));
-                increaseOccupancy(index_x,index_y,round(k*20));
+                //k = 1 / (1+sqrt(pow(x-index_x,2)+pow(y-index_y,2)));
+                //increaseOccupancy(index_x,index_y,round(k*20));
+                addOccupancy(index_x,index_y,gaussian(x,y,index_x,index_y));
 
             }
         }
     }
 
-
-    void increaseOccupancy(int x, int y, int inc_value)
+    int gaussian(int x0, int y0, int x, int y)
     {
-        int index = y*nColumns+x;
-        int value;
-
-        if (0<= index && index < nRows*nColumns)
-        {
-            value = smooth_map.data[index]+inc_value;
-            if (value <= 100)
-            {
-                smooth_map.data[index] = value;
-            }else
-            {
-                smooth_map.data[index] = 100;
-            }
-        }else
-        {
-            //ROS_INFO("Map index out of bounds: %i, Max: %i", index, nRows*nColumns-1);
-            return;
-        }
+        //double SIGMA = 1.5;
+        return (int) round( 100*exp(-1*((1/(2*pow(SIGMA,2)))*pow((double) x-x0,2) + (1/(2*pow(SIGMA,2)))*pow((double) y-y0,2))));
     }
 
 
@@ -228,7 +213,10 @@ public:
         }
         else if (0<= index && index < nRows*nColumns)
         {
-            smooth_map.data[index] = value;
+            if (smooth_map.data[index] < value)
+            {
+                smooth_map.data[index] = value;
+            }
         }else
         {
             //ROS_INFO("Map index out of bounds: %i, Max: %i", index, nRows*nColumns-1);
@@ -301,6 +289,7 @@ int main(int argc, char **argv)
     }
 
     smooth_map_node.smoothMap();
+    ROS_INFO("Map smoothing done.");
 
     while(ros::ok())
     {
