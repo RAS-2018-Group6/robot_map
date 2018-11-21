@@ -14,12 +14,20 @@
 #include <vector>
 #include "object.cpp"
 
-#define LOAD_MAP_FROM_FILE 0 // load previously saved map
+#define LOAD_MAP_FROM_FILE 0 // boolean
 #define RESOLUTION 0.01
+#define USE_RAY_TRACE 0 // boolean
 
 
 class MapNode
 {
+
+private:
+    nav_msgs::OccupancyGrid map_msg;
+    int nRows;
+    int nColumns;
+    double map_resolution;
+    double object_size;
 
 public:
     ros::NodeHandle n;
@@ -81,10 +89,14 @@ public:
     void laserCallback(const sensor_msgs::LaserScan::ConstPtr& scan_msg)
     {
 
+        if (!USE_RAY_TRACE)
+        {
+            return;
+        }
+
         laser_geometry::LaserProjection projector;
         tf::StampedTransform laser_tf;
         sensor_msgs::PointCloud cloud;
-
 
         try
         {
@@ -431,12 +443,6 @@ public:
     }
 
 
-private:
-    nav_msgs::OccupancyGrid map_msg;
-    int nRows;
-    int nColumns;
-    double map_resolution;
-    double object_size;
 };
 
 
@@ -486,7 +492,7 @@ int main(int argc, char **argv)
                 x2_points.push_back(x2);
                 y1_points.push_back(y1);
                 y2_points.push_back(y2);
-                ROS_INFO("Got wall x1,y1,x2,y2: [%f, %f, %f, %f]", x1,y1,x2,y2);
+                //ROS_INFO("Got wall x1,y1,x2,y2: [%f, %f, %f, %f]", x1,y1,x2,y2);
                 max_x = fmax(max_x,x1);
                 max_x = fmax(max_x,x2);
                 max_y = fmax(max_y,y1);
