@@ -217,7 +217,7 @@ public:
         {
             for (int index_y = y_start; index_y<= y+round(size/2); index_y++)
             {
-                clearOccupancy(index_x,index_y,0);
+                clearOccupancy(index_x,index_y);
             }
         }
     }
