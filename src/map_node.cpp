@@ -1,6 +1,7 @@
 
 #include <ros/ros.h>
 #include <nav_msgs/OccupancyGrid.h>
+#include <nav_msgs/Odometry.h>
 #include <geometry_msgs/PointStamped.h>
 #include <sensor_msgs/LaserScan.h>
 #include <sensor_msgs/PointCloud.h>
@@ -37,6 +38,7 @@ public:
     ros::Subscriber sub_objectsToAdd;
     ros::Subscriber sub_laser;
     ros::Subscriber sub_obstacle;
+    ros::Subscriber sub_position;
     tf::TransformListener *tf_listener;
     std::vector<ValuableObject> foundObjects;
 
@@ -64,6 +66,7 @@ public:
         sub_objectsToAdd = n.subscribe<geometry_msgs::PointStamped>("/found_object",1,&MapNode::objectCallback,this);
         sub_laser = n.subscribe<sensor_msgs::LaserScan>("/scan",1,&MapNode::laserCallback,this);
         sub_obstacle = n.subscribe<obstacle_detection::Obstacle>("/found_obstacle_perception",10,&MapNode::obstacleCallback,this);
+        sub_position = n.subscribe<nav_msgs::Odometry>("/particle_position",1,&MapNode::positionCallback,this);
     }
 
     MapNode(ros::NodeHandle node)
@@ -188,6 +191,35 @@ public:
         ROS_INFO("Adding obstacle.");
         addLine(msg->positions[0].point.x,msg->positions[0].point.y,msg->positions[1].point.x,msg->positions[1].point.y,"increase");
         //addObject(mToCell(msg->positions[2].point.x),mToCell(msg->positions[2].point.y));
+    }
+
+    void positionCallback(const nav_msgs::Odometry::ConstPtr& msg)
+    {
+        clearBase(msg->pose.pose.position.x,msg->pose.pose.position.y);
+    }
+
+    void clearBase(float x, float y)
+    {
+        int size = mToCell(0.1);
+        int x_start = x-round(size/2);
+        int y_start = y-round(size/2);
+
+        if (x_start < 0)
+        {
+          x_start = 0;
+        }
+        if (y_start < 0)
+        {
+          y_start = 0;
+        }
+
+        for (int index_x = x_start; index_x <= x+round(size/2); index_x++)
+        {
+            for (int index_y = y_start; index_y<= y+round(size/2); index_y++)
+            {
+                clearOccupancy(index_x,index_y,0);
+            }
+        }
     }
 
     void addObject(int x, int y)
@@ -356,6 +388,19 @@ public:
         else if (0<= index && index < nRows*nColumns)
         {
             map_msg.data[index] = value;
+        }else
+        {
+            ROS_INFO("Map index out of bounds: %i, Max: %i", index, nRows*nColumns-1);
+        }
+    }
+
+    void clearOccupancy(int x, int y)
+    {
+        int index = y*nColumns+x;
+
+        if (0<= index && index < nRows*nColumns && map_msg.data[index] != 100)
+        {
+            map_msg.data[index] = 0;
         }else
         {
             ROS_INFO("Map index out of bounds: %i, Max: %i", index, nRows*nColumns-1);
