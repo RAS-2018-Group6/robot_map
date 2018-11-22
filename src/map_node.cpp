@@ -187,6 +187,7 @@ public:
         }
         ROS_INFO("Adding obstacle.");
         addLine(msg->positions[0].point.x,msg->positions[0].point.y,msg->positions[1].point.x,msg->positions[1].point.y,"increase");
+        //addObject(mToCell(msg->positions[2].point.x),mToCell(msg->positions[2].point.y));
     }
 
     void addObject(int x, int y)
