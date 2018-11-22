@@ -13,10 +13,12 @@
 #include <fstream>
 #include <vector>
 #include "object.cpp"
+#include <obstacle_detection/Obstacle.h>
 
 #define LOAD_MAP_FROM_FILE 0 // boolean
 #define RESOLUTION 0.01
 #define USE_RAY_TRACE 0 // boolean
+#define ADD_OBSTACLES 1
 
 
 class MapNode
@@ -34,8 +36,10 @@ public:
     ros::Publisher pub_gridmap;
     ros::Subscriber sub_objectsToAdd;
     ros::Subscriber sub_laser;
+    ros::Subscriber sub_obstacle;
     tf::TransformListener *tf_listener;
     std::vector<ValuableObject> foundObjects;
+
 
 
     MapNode(ros::NodeHandle node, double width,double height, double res)
@@ -59,6 +63,7 @@ public:
         pub_gridmap = n.advertise<nav_msgs::OccupancyGrid>("/grid_map",1);
         sub_objectsToAdd = n.subscribe<geometry_msgs::PointStamped>("/found_object",1,&MapNode::objectCallback,this);
         sub_laser = n.subscribe<sensor_msgs::LaserScan>("/scan",1,&MapNode::laserCallback,this);
+        sub_obstacle = n.subscribe<obstacle_detection::Obstacle>("/found_obstacle_perception",10,&MapNode::obstacleCallback,this);
     }
 
     MapNode(ros::NodeHandle node)
@@ -171,6 +176,17 @@ public:
         ROS_INFO("Placed Object at (%i,%i) of class: %i",x,y,type);
         addObject(x,y);
 
+    }
+
+
+    void obstacleCallback(const obstacle_detection::Obstacle::ConstPtr& msg)
+    {
+        if (!ADD_OBSTACLES)
+        {
+            return;
+        }
+        ROS_INFO("Adding obstacle.");
+        addLine(msg->positions[0].point.x,msg->positions[0].point.y,msg->positions[1].point.x,msg->positions[1].point.y,"increase");
     }
 
     void addObject(int x, int y)
