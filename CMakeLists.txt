@@ -18,6 +18,7 @@ find_package(
   tf
   laser_geometry
   obstacle_detection
+  object_identification
 )
 
 
@@ -55,7 +56,7 @@ catkin_package(
   DEPENDS
 #  INCLUDE_DIRS include
 #  LIBRARIES robot_map
-  CATKIN_DEPENDS nav_msgs roscpp ras_maze_map visualization_msgs geometry_msgs sensor_msgs tf laser_geometry obstacle_detection
+  CATKIN_DEPENDS nav_msgs roscpp ras_maze_map visualization_msgs geometry_msgs sensor_msgs tf laser_geometry obstacle_detection object_identification
 #  DEPENDS system_lib
 )
 
@@ -76,5 +77,3 @@ target_link_libraries(map_node ${catkin_LIBRARIES})
 
 add_executable(map_smoother src/map_smoother.cpp)
 target_link_libraries(map_smoother ${catkin_LIBRARIES})
-
-

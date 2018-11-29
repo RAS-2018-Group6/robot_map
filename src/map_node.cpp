@@ -7,6 +7,7 @@
 #include <sensor_msgs/PointCloud.h>
 #include <tf/transform_listener.h>
 #include <laser_geometry/laser_geometry.h>
+#include <geometry_msgs/Twist.h>
 #include <math.h>
 #include <sstream>
 #include <iostream>
@@ -15,10 +16,11 @@
 #include <vector>
 #include "object.cpp"
 #include <obstacle_detection/Obstacle.h>
+#include <object_identification/ObjectList.h>
 
-#define LOAD_MAP_FROM_FILE 0 // boolean
+#define LOAD_MAP_FROM_FILE 0
 #define RESOLUTION 0.01
-#define USE_RAY_TRACE 0 // boolean
+#define USE_RAY_TRACE 1
 #define ADD_OBSTACLES 1
 
 
@@ -31,14 +33,16 @@ private:
     int nColumns;
     double map_resolution;
     double object_size;
+    bool isMoving;
 
 public:
     ros::NodeHandle n;
     ros::Publisher pub_gridmap;
-    ros::Subscriber sub_objectsToAdd;
+    ros::Subscriber sub_allObjects;
     ros::Subscriber sub_laser;
     ros::Subscriber sub_obstacle;
     ros::Subscriber sub_position;
+    ros::Subscriber sub_vel;
     tf::TransformListener *tf_listener;
     std::vector<ValuableObject> foundObjects;
 
@@ -52,8 +56,9 @@ public:
 
         map_resolution = res; //Every element corresponds to a res*res cm area
         object_size = 0.05; // side length of square object
-        nColumns = (int) round((width/map_resolution)+0.5); // +0.5
-        nRows = (int) round((height/map_resolution)+0.5); // +0.5
+        nColumns = (int) round((width/map_resolution)+1); // +0.5
+        nRows = (int) round((height/map_resolution)+1); // +0.5
+        isMoving = 1;
         ROS_INFO("Grid map rows: %i, cols: %i",nRows,nColumns);
 
         map_msg.data.resize((nRows)*(nColumns));
@@ -62,9 +67,11 @@ public:
         map_msg.info.height = nRows;
         map_msg.info.width = nColumns;
 
+
         pub_gridmap = n.advertise<nav_msgs::OccupancyGrid>("/grid_map",1);
-        sub_objectsToAdd = n.subscribe<geometry_msgs::PointStamped>("/found_object",1,&MapNode::objectCallback,this);
-        sub_laser = n.subscribe<sensor_msgs::LaserScan>("/scan",1,&MapNode::laserCallback,this);
+        sub_vel = n.subscribe<geometry_msgs::Twist>("/motor_controller/twist", 1, &MapNode::velocityCallback,this);
+        sub_allObjects = n.subscribe<object_identification::ObjectList>("/known_objects",1,&MapNode::objectCallback,this);
+        sub_laser = n.subscribe<sensor_msgs::LaserScan>("/scan_modified",1,&MapNode::laserCallback,this);
         sub_obstacle = n.subscribe<obstacle_detection::Obstacle>("/found_obstacle_perception",10,&MapNode::obstacleCallback,this);
         sub_position = n.subscribe<nav_msgs::Odometry>("/particle_position",1,&MapNode::positionCallback,this);
     }
@@ -76,6 +83,7 @@ public:
 
         loadMap();
 
+        isMoving = 1;
         map_resolution = map_msg.info.resolution;
         object_size = 0.05; // side length of square object
         nColumns = map_msg.info.width;
@@ -83,8 +91,12 @@ public:
         ROS_INFO("Grid map rows: %i, cols: %i",nRows,nColumns);
 
         pub_gridmap = n.advertise<nav_msgs::OccupancyGrid>("/grid_map",1);
-        sub_objectsToAdd = n.subscribe<geometry_msgs::PointStamped>("/found_object",1,&MapNode::objectCallback,this);
+        sub_vel = n.subscribe<geometry_msgs::Twist>("/motor_controller/twist", 1, &MapNode::velocityCallback,this);
+        //sub_objectsToAdd = n.subscribe<geometry_msgs::PointStamped>("/found_object",1,&MapNode::objectCallback,this);
+        sub_allObjects = n.subscribe<object_identification::ObjectList>("/known_objects",1,&MapNode::objectCallback,this);
         sub_laser = n.subscribe<sensor_msgs::LaserScan>("/scan",1,&MapNode::laserCallback,this);
+        sub_obstacle = n.subscribe<obstacle_detection::Obstacle>("/found_obstacle_perception",10,&MapNode::obstacleCallback,this);
+        sub_position = n.subscribe<nav_msgs::Odometry>("/particle_position",1,&MapNode::positionCallback,this);
     }
 
     ~MapNode()
@@ -93,11 +105,21 @@ public:
     }
 
 
+    void velocityCallback(const geometry_msgs::Twist::ConstPtr& msg)
+    {
+      if (msg->linear.x == 0 && msg->angular.z == 0)
+      {
+        isMoving = 0;
+      }else
+      {
+        isMoving = 1;
+      }
+    }
 
     void laserCallback(const sensor_msgs::LaserScan::ConstPtr& scan_msg)
     {
 
-        if (!USE_RAY_TRACE)
+        if (!USE_RAY_TRACE || isMoving)
         {
             return;
         }
@@ -122,50 +144,61 @@ public:
         {
             rayTrace(laser_tf.getOrigin().x(), laser_tf.getOrigin().y(),cloud.points[i].x,cloud.points[i].y);
         }
-
-
     }
 
     bool clearLineOfSight(double x0, double y0, double x1, double y1)
+    {
+    // Returns 1 if no wall was in the way. Prevents from adding occupancy behind known walls.
+        int index;
+        double phi = atan2(y1-y0,x1-x0);
+        double dist = sqrt(pow(x0-x1,2) + pow(y0-y1,2));
+        double current_dist = 0;
+
+        double x = x0;
+        double y = y0;
+
+        while (current_dist < dist)
+        {
+            index = mToCell(y)*nColumns+mToCell(x);
+            if (0 <= index && index < nRows*nColumns)
             {
-            // Returns 1 if no wall was in the way. Prevents from adding occupancy behind known walls.
-                int index;
-                double phi = atan2(y1-y0,x1-x0);
-                double dist = sqrt(pow(x0-x1,2) + pow(y0-y1,2));
-                double current_dist = 0;
-
-                double x = x0;
-                double y = y0;
-
-                while (current_dist < dist)
+                if (map_msg.data[mToCell(y)*nColumns+mToCell(x)] == 100)
                 {
-                    index = mToCell(y)*nColumns+mToCell(x);
-                    if (0 <= index && index < nRows*nColumns)
-                    {
-                        if (map_msg.data[mToCell(y)*nColumns+mToCell(x)] == 100){
-                            return 0;
-                        }
-                        decreaseOccupancy(mToCell(x),mToCell(y));
-                        x = x+map_resolution*cos(phi);
-                        y = y+map_resolution*sin(phi);
-                        current_dist = current_dist+map_resolution;
-                    }else
-                    {
-                        return 0;
-                    }
+                    return 0;
                 }
+                decreaseOccupancy(mToCell(x),mToCell(y));
+                x = x+map_resolution*cos(phi);
+                y = y+map_resolution*sin(phi);
+                current_dist = current_dist+map_resolution;
+            }else
+            {
+                return 0;
+            }
+        }
 
-            return 1;
+        return 1;
     }
 
 
-    void objectCallback(const geometry_msgs::PointStamped::ConstPtr& msg)
+    void objectCallback(const object_identification::ObjectList::ConstPtr& msg)
     {
+      int x,y;
+      for(int i = 0; i < msg->positions.size(); i++)
+      {
+        x = mToCell(msg->positions[i].point.x);
+        y = mToCell(msg->positions[i].point.y);
+        clearArea(x,y, object_size+0.03);
+        addObject(x,y);
+        foundObjects.push_back(*(new ValuableObject(x,y,(int) msg->object_class[i],(int) msg->id[i])));
+      }
+      saveMap();
+        /*
         return;
-        int x,y,type;
+        int x,y,type,id;
         x = mToCell(msg->point.x);
         y = mToCell(msg->point.y);
         type = (int) msg->point.z;
+        id = 0;
 
         for (int i = 0; i < foundObjects.size(); i++)
         {
@@ -175,10 +208,22 @@ public:
                 return;
             }
         }
-        foundObjects.push_back(*(new ValuableObject(x,y,type)));
+        foundObjects.push_back(*(new ValuableObject(x,y,type,id)));
         ROS_INFO("Placed Object at (%i,%i) of class: %i",x,y,type);
         addObject(x,y);
+        */
+    }
 
+    void removeObject(int id)
+    {
+      for(int i = 0; i < foundObjects.size(); i++)
+      {
+        if(foundObjects[i].ID == id)
+        {
+          clearArea(foundObjects[i].x,foundObjects[i].y, object_size);
+          return;
+        }
+      }
     }
 
 
@@ -189,18 +234,19 @@ public:
             return;
         }
         ROS_INFO("Adding obstacle.");
-        addLine(msg->positions[0].point.x,msg->positions[0].point.y,msg->positions[1].point.x,msg->positions[1].point.y,"increase");
+        addLine(msg->positions[0].point.x,msg->positions[0].point.y,msg->positions[1].point.x,msg->positions[1].point.y,"fill");
         //addObject(mToCell(msg->positions[2].point.x),mToCell(msg->positions[2].point.y));
     }
 
     void positionCallback(const nav_msgs::Odometry::ConstPtr& msg)
     {
-        clearBase(msg->pose.pose.position.x,msg->pose.pose.position.y);
+        //clearBase(msg->pose.pose.position.x,msg->pose.pose.position.y,0.1);
+        return;
     }
 
-    void clearBase(float x, float y)
+    void clearArea(int x, int y, float area)
     {
-        int size = mToCell(0.1);
+        int size = mToCell(area);
         int x_start = x-round(size/2);
         int y_start = y-round(size/2);
 
@@ -249,7 +295,11 @@ public:
 
     void rayTrace(double x_robot, double y_robot, double x, double y)
     {
-        if (clearLineOfSight(x_robot,y_robot,x,y)){
+        if (sqrt(pow(x_robot-x,2) + pow(y_robot-y,2)) > 0.8)
+        {
+          // dont add measurements that are too far away
+          return;
+        }else if (clearLineOfSight(x_robot,y_robot,x,y)){
             // if no known walls was in the way.
             increaseOccupancy(mToCell(x),mToCell(y));
         }
@@ -398,9 +448,9 @@ public:
     {
         int index = y*nColumns+x;
 
-        if (0<= index && index < nRows*nColumns && map_msg.data[index] != 100)
+        if (0<= index && index < nRows*nColumns)
         {
-            map_msg.data[index] = 0;
+          map_msg.data[index] = 0;
         }else
         {
             ROS_INFO("Map index out of bounds: %i, Max: %i", index, nRows*nColumns-1);
@@ -418,9 +468,9 @@ public:
                 // dont mess with occupancy 100 cells!
                 return;
             }
-            else if (map_msg.data[index] <= 79)
+            else if (map_msg.data[index] <= 74)
             {
-                map_msg.data[index] = map_msg.data[index]+20;
+                map_msg.data[index] = map_msg.data[index]+25;
             }else
             {
                 // occupancy 100 reserved for fixed walls and objects
@@ -571,7 +621,7 @@ int main(int argc, char **argv)
             map_node->addLine(x1_points[i],y1_points[i],x2_points[i],y2_points[i], "fill");
         }
 
-        map_node->saveMap();
+        //map_node->saveMap();
     }
 
     while(ros::ok())
