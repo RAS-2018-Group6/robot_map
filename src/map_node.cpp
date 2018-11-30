@@ -589,8 +589,10 @@ int main(int argc, char **argv)
         std::vector<double> x2_points;
         std::vector<double> y1_points;
         std::vector<double> y2_points;
-        double max_x = 0;
-        double max_y = 0;
+        double max_x = -100;
+        double max_y = -100;
+        double min_x = 100;
+        double min_y = 100;
 
         std::string line;
         while(getline(map_fs, line))
@@ -609,16 +611,21 @@ int main(int argc, char **argv)
                 max_x = fmax(max_x,x2);
                 max_y = fmax(max_y,y1);
                 max_y = fmax(max_y,y2);
+
+                min_x = fmin(min_x,x1);
+                min_x = fmin(min_x,x2);
+                min_y = fmin(min_y,y1);
+                min_y = fmin(min_y,y2);
             }
         }
-        ROS_INFO("Map dimensions: (%f x %f)",max_x,max_y);
+        ROS_INFO("Map dimensions: (%f x %f)",max_x-min_x,max_y-min_y);
 
-       map_node = new MapNode(n,max_x,max_y, RESOLUTION);
+       map_node = new MapNode(n,max_x-min_x,max_y-min_y, RESOLUTION);
 
 
         for (int i = 0; i < x1_points.size(); ++i)
         {
-            map_node->addLine(x1_points[i],y1_points[i],x2_points[i],y2_points[i], "fill");
+            map_node->addLine(x1_points[i]-min_x,y1_points[i]-min_y,x2_points[i]-min_x,y2_points[i]-min_y, "fill");
         }
 
         //map_node->saveMap();
