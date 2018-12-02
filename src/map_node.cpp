@@ -19,7 +19,7 @@
 #include <object_identification/ObjectList.h>
 #include <std_msgs/Bool.h>
 
-#define LOAD_MAP_FROM_FILE 0
+#define LOAD_MAP_FROM_FILE 1
 #define RESOLUTION 0.02
 #define USE_RAY_TRACE 1
 #define ADD_OBSTACLES 1
@@ -30,6 +30,7 @@ class MapNode
 
 private:
     nav_msgs::OccupancyGrid map_msg;
+    object_identification::ObjectList object_msg;
     int nRows;
     int nColumns;
     double map_resolution;
@@ -40,7 +41,8 @@ private:
 public:
     ros::NodeHandle n;
     ros::Publisher pub_gridmap;
-    ros::Subscriber sub_allObjects;
+    ros::Publisher pub_known_objects;
+    ros::Subscriber sub_known_objects;
     ros::Subscriber sub_laser;
     ros::Subscriber sub_obstacle;
     ros::Subscriber sub_position;
@@ -73,8 +75,9 @@ public:
 
 
         pub_gridmap = n.advertise<nav_msgs::OccupancyGrid>("/grid_map",1);
+        pub_known_objects = n.advertise<object_identification::ObjectList>("/known_objects",1);
         sub_vel = n.subscribe<geometry_msgs::Twist>("/motor_controller/twist", 1, &MapNode::velocityCallback,this);
-        sub_allObjects = n.subscribe<object_identification::ObjectList>("/known_objects",1,&MapNode::objectCallback,this);
+        sub_known_objects = n.subscribe<object_identification::ObjectList>("/known_objects",1,&MapNode::objectCallback,this);
         sub_laser = n.subscribe<sensor_msgs::LaserScan>("/scan_modified",1,&MapNode::laserCallback,this);
         sub_obstacle = n.subscribe<obstacle_detection::Obstacle>("/found_obstacle_perception",10,&MapNode::obstacleCallback,this);
         sub_position = n.subscribe<nav_msgs::Odometry>("/particle_position",1,&MapNode::positionCallback,this);
@@ -89,16 +92,19 @@ public:
         loadMap();
 
         isMoving = 1;
+        obstacleInFront = 0;
         map_resolution = map_msg.info.resolution;
         object_size = 0.05; // side length of square object
         nColumns = map_msg.info.width;
         nRows = map_msg.info.height;
         ROS_INFO("Grid map rows: %i, cols: %i",nRows,nColumns);
 
+
         pub_gridmap = n.advertise<nav_msgs::OccupancyGrid>("/grid_map",1);
+        pub_known_objects = n.advertise<object_identification::ObjectList>("/saved_objects",1);
         sub_vel = n.subscribe<geometry_msgs::Twist>("/motor_controller/twist", 1, &MapNode::velocityCallback,this);
         //sub_objectsToAdd = n.subscribe<geometry_msgs::PointStamped>("/found_object",1,&MapNode::objectCallback,this);
-        sub_allObjects = n.subscribe<object_identification::ObjectList>("/known_objects",1,&MapNode::objectCallback,this);
+        sub_known_objects = n.subscribe<object_identification::ObjectList>("/known_objects",1,&MapNode::objectCallback,this);
         sub_laser = n.subscribe<sensor_msgs::LaserScan>("/scan",1,&MapNode::laserCallback,this);
         sub_obstacle = n.subscribe<obstacle_detection::Obstacle>("/found_obstacle_perception",10,&MapNode::obstacleCallback,this);
         sub_position = n.subscribe<nav_msgs::Odometry>("/particle_position",1,&MapNode::positionCallback,this);
@@ -197,28 +203,12 @@ public:
         addObject(x,y);
         foundObjects.push_back(*(new ValuableObject(x,y,(int) msg->object_class[i],(int) msg->id[i])));
       }
-      saveMap();
-        /*
-        return;
-        int x,y,type,id;
-        x = mToCell(msg->point.x);
-        y = mToCell(msg->point.y);
-        type = (int) msg->point.z;
-        id = 0;
 
-        for (int i = 0; i < foundObjects.size(); i++)
-        {
-            if (foundObjects[i].x == x && foundObjects[i].y == y)
-            {
-                // object already seen
-                return;
-            }
-        }
-        foundObjects.push_back(*(new ValuableObject(x,y,type,id)));
-        ROS_INFO("Placed Object at (%i,%i) of class: %i",x,y,type);
-        addObject(x,y);
-        */
+      object_msg = *msg;
+
+      saveMap();
     }
+
 
     void removeObject(int id)
     {
@@ -529,6 +519,27 @@ public:
 
         float line;
         mapfile>>line;
+        int n_objects = (int) line;
+
+        object_msg.positions.resize(n_objects);
+        object_msg.object_class.resize(n_objects);
+        object_msg.id.resize(n_objects);
+
+        // get objects
+        for(int i = 0; i < n_objects; i++)
+        {
+          mapfile>>line;
+          object_msg.positions[i].point.x = line;
+          mapfile>>line;
+          object_msg.positions[i].point.y = line;
+          mapfile>>line;
+          object_msg.object_class[i] = (int) line;
+          mapfile>>line;
+          object_msg.id[i] = (int) line;
+        }
+
+        // get map data
+        mapfile>>line;
         map_msg.info.height = (int) line;
         mapfile>>line;
         map_msg.info.width = (int) line;
@@ -545,7 +556,6 @@ public:
         }
 
         mapfile.close();
-
     }
 
     void saveMap(){
@@ -555,12 +565,26 @@ public:
         if (mapfile.is_open()){
             ROS_INFO("File open");
         }
+
+        mapfile << object_msg.positions.size() << "\n";
+
+        for(int i = 0; i < object_msg.positions.size(); i++)
+        {
+          mapfile << object_msg.positions[i].point.x << "\n";
+          mapfile << object_msg.positions[i].point.y << "\n";
+          mapfile << object_msg.object_class[i] << "\n";
+          mapfile << object_msg.id[i] << "\n";
+        }
+
         mapfile << map_msg.info.height << "\n";
         mapfile << map_msg.info.width << "\n";
         mapfile << map_msg.info.resolution << "\n";
-        for (int i = 0; i < map_msg.data.size(); i++){
+
+        for (int i = 0; i < map_msg.data.size(); i++)
+        {
             mapfile << (int) map_msg.data[i] << "\n";
         }
+
         mapfile.close();
         ROS_INFO("Map saved to file.");
     }
@@ -569,6 +593,11 @@ public:
     void publishMapToTopic()
     {
         pub_gridmap.publish(map_msg);
+    }
+
+    void publishObjects()
+    {
+        pub_known_objects.publish(object_msg);
     }
 
 
@@ -652,6 +681,10 @@ int main(int argc, char **argv)
     {
         ros::spinOnce();
         map_node->publishMapToTopic();
+        if (LOAD_MAP_FROM_FILE)
+        {
+            map_node->publishObjects();
+        }
         loop_rate.sleep();
     }
 

@@ -1,6 +1,6 @@
 <launch>
 
-	<arg name="map_file" default="lab_maze_2018_partial.txt" />  //"contest_maze_2017.txt"
+	<arg name="map_file" default="lab_maze_2018.txt" />  //"contest_maze_2017.txt"
 
 	<node pkg="robot_map" type="map_node" name="map_node" output="screen" >
 		 <param name="map_file" value="$(find ras_maze_map)/maps/$(arg map_file)"/>
