@@ -19,6 +19,7 @@ find_package(
   laser_geometry
   obstacle_detection
   object_identification
+  std_msgs
 )
 
 
@@ -56,7 +57,7 @@ catkin_package(
   DEPENDS
 #  INCLUDE_DIRS include
 #  LIBRARIES robot_map
-  CATKIN_DEPENDS nav_msgs roscpp ras_maze_map visualization_msgs geometry_msgs sensor_msgs tf laser_geometry obstacle_detection object_identification
+  CATKIN_DEPENDS nav_msgs roscpp std_msgs ras_maze_map visualization_msgs geometry_msgs sensor_msgs tf laser_geometry obstacle_detection object_identification
 #  DEPENDS system_lib
 )
 

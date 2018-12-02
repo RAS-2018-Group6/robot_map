@@ -17,9 +17,10 @@
 #include "object.cpp"
 #include <obstacle_detection/Obstacle.h>
 #include <object_identification/ObjectList.h>
+#include <std_msgs/Bool.h>
 
 #define LOAD_MAP_FROM_FILE 0
-#define RESOLUTION 0.01
+#define RESOLUTION 0.02
 #define USE_RAY_TRACE 1
 #define ADD_OBSTACLES 1
 
@@ -34,6 +35,7 @@ private:
     double map_resolution;
     double object_size;
     bool isMoving;
+    bool obstacleInFront;
 
 public:
     ros::NodeHandle n;
@@ -43,6 +45,7 @@ public:
     ros::Subscriber sub_obstacle;
     ros::Subscriber sub_position;
     ros::Subscriber sub_vel;
+    ros::Subscriber sub_wall;
     tf::TransformListener *tf_listener;
     std::vector<ValuableObject> foundObjects;
 
@@ -59,6 +62,7 @@ public:
         nColumns = (int) round((width/map_resolution)+1); // +0.5
         nRows = (int) round((height/map_resolution)+1); // +0.5
         isMoving = 1;
+        obstacleInFront = 0;
         ROS_INFO("Grid map rows: %i, cols: %i",nRows,nColumns);
 
         map_msg.data.resize((nRows)*(nColumns));
@@ -74,6 +78,7 @@ public:
         sub_laser = n.subscribe<sensor_msgs::LaserScan>("/scan_modified",1,&MapNode::laserCallback,this);
         sub_obstacle = n.subscribe<obstacle_detection::Obstacle>("/found_obstacle_perception",10,&MapNode::obstacleCallback,this);
         sub_position = n.subscribe<nav_msgs::Odometry>("/particle_position",1,&MapNode::positionCallback,this);
+        sub_wall = n.subscribe<std_msgs::Bool>("/wall_detected", 1, &MapNode::wallCallback,this);
     }
 
     MapNode(ros::NodeHandle node)
@@ -97,6 +102,7 @@ public:
         sub_laser = n.subscribe<sensor_msgs::LaserScan>("/scan",1,&MapNode::laserCallback,this);
         sub_obstacle = n.subscribe<obstacle_detection::Obstacle>("/found_obstacle_perception",10,&MapNode::obstacleCallback,this);
         sub_position = n.subscribe<nav_msgs::Odometry>("/particle_position",1,&MapNode::positionCallback,this);
+        sub_wall = n.subscribe<std_msgs::Bool>("/wall_detected", 1, &MapNode::wallCallback,this);
     }
 
     ~MapNode()
@@ -119,7 +125,7 @@ public:
     void laserCallback(const sensor_msgs::LaserScan::ConstPtr& scan_msg)
     {
 
-        if (!USE_RAY_TRACE || isMoving)
+        if (!USE_RAY_TRACE || isMoving || !obstacleInFront)
         {
             return;
         }
@@ -240,8 +246,19 @@ public:
 
     void positionCallback(const nav_msgs::Odometry::ConstPtr& msg)
     {
-        //clearBase(msg->pose.pose.position.x,msg->pose.pose.position.y,0.1);
-        return;
+        clearArea(mToCell(msg->pose.pose.position.x),mToCell(msg->pose.pose.position.y),0.15);
+    }
+
+    void wallCallback(const std_msgs::Bool::ConstPtr& msg)
+    {
+        if (msg->data == 1)
+        {
+          obstacleInFront = 1;
+
+        }else
+        {
+          obstacleInFront = 0;
+        }
     }
 
     void clearArea(int x, int y, float area)
@@ -468,9 +485,9 @@ public:
                 // dont mess with occupancy 100 cells!
                 return;
             }
-            else if (map_msg.data[index] <= 74)
+            else if (map_msg.data[index] <= 79)
             {
-                map_msg.data[index] = map_msg.data[index]+25;
+                map_msg.data[index] = map_msg.data[index]+20;
             }else
             {
                 // occupancy 100 reserved for fixed walls and objects
