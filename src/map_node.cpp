@@ -229,7 +229,7 @@ public:
         {
             return;
         }
-        ROS_INFO("Adding obstacle.");
+        //ROS_INFO("Adding obstacle.");
         addLine(msg->positions[0].point.x,msg->positions[0].point.y,msg->positions[1].point.x,msg->positions[1].point.y,"fill");
         //addObject(mToCell(msg->positions[2].point.x),mToCell(msg->positions[2].point.y));
     }
@@ -514,7 +514,7 @@ public:
     }
 
     void loadMap(){
-        std::fstream mapfile("/home/ras/catkin_ws/src/robot_map/map.txt");
+        std::fstream mapfile("/home/ras16/catkin_ws/src/robot_map/map.txt");
 
 
         float line;
@@ -561,7 +561,9 @@ public:
     void saveMap(){
 
         std::ofstream mapfile;
-        mapfile.open("/home/ras/catkin_ws/src/robot_map/map.txt");
+        //mapfile.open("/home/ras/catkin_ws/src/robot_map/map.txt");
+        mapfile.open("/home/ras16/catkin_ws/src/robot_map/map.txt");
+
         if (mapfile.is_open()){
             ROS_INFO("File open");
         }
