@@ -19,7 +19,7 @@
 #include <object_identification/ObjectList.h>
 #include <std_msgs/Bool.h>
 
-#define LOAD_MAP_FROM_FILE 1
+#define LOAD_MAP_FROM_FILE 0
 #define RESOLUTION 0.02
 #define USE_RAY_TRACE 1
 #define ADD_OBSTACLES 1
