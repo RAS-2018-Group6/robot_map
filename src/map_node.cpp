@@ -19,7 +19,7 @@
 #include <object_identification/ObjectList.h>
 #include <std_msgs/Bool.h>
 
-#define LOAD_MAP_FROM_FILE 0
+#define LOAD_MAP_FROM_FILE 1
 #define RESOLUTION 0.02
 #define USE_RAY_TRACE 1
 #define ADD_OBSTACLES 1
@@ -82,6 +82,7 @@ public:
         sub_obstacle = n.subscribe<obstacle_detection::Obstacle>("/found_obstacle_perception",10,&MapNode::obstacleCallback,this);
         sub_position = n.subscribe<nav_msgs::Odometry>("/particle_position",1,&MapNode::positionCallback,this);
         sub_wall = n.subscribe<std_msgs::Bool>("/wall_detected", 1, &MapNode::wallCallback,this);
+        pub_known_objects = n.advertise<object_identification::ObjectList>("/saved_objects",1);
     }
 
     MapNode(ros::NodeHandle node)
@@ -558,6 +559,19 @@ public:
         mapfile.close();
     }
 
+    void competitionObject()
+    {
+      ROS_INFO("Saved competition object");
+      object_msg.positions.resize(1);
+      object_msg.object_class.resize(1);
+      object_msg.id.resize(1);
+      object_msg.positions[0].point.x = 2.0;
+      object_msg.positions[0].point.y = 2.32;
+      object_msg.object_class[0] = 5;
+      object_msg.id[0] = 0;
+
+    }
+
     void saveMap(){
 
         std::ofstream mapfile;
@@ -679,10 +693,12 @@ int main(int argc, char **argv)
         //map_node->saveMap();
     }
 
+    //map_node->competitionObject(); // used for hard coded object position during competition
     while(ros::ok())
     {
         ros::spinOnce();
         map_node->publishMapToTopic();
+        //map_node->publishObjects();
         if (LOAD_MAP_FROM_FILE)
         {
             map_node->publishObjects();
